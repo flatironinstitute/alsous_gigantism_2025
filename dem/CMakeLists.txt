@@ -1,13 +1,13 @@
 # @HEADER
 # **********************************************************************************************************************
 #
-# Sam: A Starter Application Using Mundy
-# Copyright 2025 Bryce Palmer
+# AG2025 : Software supporting Alsous et al. The physical consequences of sperm gigantism, Nat. Phys. 2025
+# Copyright 2025 Flatiron Institute | Author Bryce Palmer
 #
-# Sam is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
+# AG2025 is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 #
-# Sam is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+# AG2025 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 # of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License along with Mundy. If not, see
@@ -72,7 +72,6 @@ add_library(${PROJECT_NAME} "")
 find_package(MPI REQUIRED)
 target_link_libraries(${PROJECT_NAME} PUBLIC $<$<BOOL:${MPI_CXX_FOUND}>:MPI::MPI_CXX>)
 
-
 ###############################################################################
 # Mundy
 ###############################################################################
@@ -86,7 +85,6 @@ message("Mundy version:      ${Mundy_VERSION}")
 message("Mundy include dirs: ${Mundy_INCLUDE_DIRS}")
 message("Mundy libraries:    ${Mundy_LIBRARIES}")
 message("Mundy definitions:  ${Mundy_DEFINITIONS}")
-
 
 ###############################################################################
 # Targets
@@ -132,7 +130,6 @@ target_link_libraries(${${PROJECT_NAME}_exe_name} PRIVATE ${PROJECT_NAME})
 # Add the subdirectories for further processing
 add_subdirectory(src)
 
-
 ###############################################################################
 # Testing (optional)
 ###############################################################################
@@ -167,8 +164,15 @@ if(${PROJECT_NAME}_ENABLE_UNIT_TESTS)
         "${googletest_SOURCE_DIR}/googletest/include")
 
     add_subdirectory(tests)
-endif()
 
+    include(GoogleTest)            # CMake >= 3.10
+    gtest_discover_tests(${utest_ex_name}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        DISCOVERY_TIMEOUT 60
+        TEST_PREFIX "unit."
+    )
+
+endif()
 
 ###############################################################################
 # Installation

@@ -1,0 +1,22 @@
+@PACKAGE_INIT@
+
+list(APPEND CMAKE_MODULE_PATH "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_DATADIR@/cmake/Modules")
+
+# Set informational variables for all dependencies that were enabled
+# None for now
+#set(@PROJECT_NAME@_USES_BOOST @ENABLE_BOOST@)
+
+# Load dependency libraries so that the targets are available
+if (NOT ${Trilinos_FOUND})
+  set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} "@Trilinos_DIR@")
+  find_package(Trilinos QUIET REQUIRED)
+endif()
+
+set_and_check(@PROJECT_NAME@_INCLUDE_DIRS "${PACKAGE_PREFIX_DIR}/include")
+set_and_check(@PROJECT_NAME@_LIBRARY_DIRS "${PACKAGE_PREFIX_DIR}/lib")
+
+include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+set(@PROJECT_NAME@_LIBRARIES "@PROJECT_NAME@::all_libs")
+set(@PROJECT_NAME@_FOUND TRUE)
+
+check_required_components(@PROJECT_NAME@)

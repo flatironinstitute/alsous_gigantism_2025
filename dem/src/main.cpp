@@ -83,14 +83,11 @@
 #include <mundy_geom/randomize.hpp>
 
 // Mundy mesh
+#include <mundy_mesh/ForEachEntity.hpp>  // for mundy::mesh::for_each_entity_run
 #include <mundy_mesh/BulkData.hpp>      // for mundy::mesh::BulkData
 #include <mundy_mesh/FieldViews.hpp>    // for mundy::mesh::vector3_field_data, mundy::mesh::quaternion_field_data
 #include <mundy_mesh/MetaData.hpp>      // for mundy::mesh::MetaData
 #include <mundy_mesh/NgpFieldBLAS.hpp>  // for mundy::mesh::field_fill
-#include <mundy_mesh/utils/FillFieldWithValue.hpp>  // for mundy::mesh::utils::fill_field_with_value
-#include <mundy_meta/FieldReqs.hpp>                 // for mundy::meta::FieldReqs
-#include <mundy_meta/MeshReqs.hpp>                  // for mundy::meta::MeshReqs
-#include <mundy_meta/PartReqs.hpp>                  // for mundy::meta::PartReqs
 
 namespace mundy {
 

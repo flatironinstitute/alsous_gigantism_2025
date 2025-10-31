@@ -68,7 +68,6 @@
 #include <stk_search/Sphere.hpp>
 
 // Mundy core
-#include <mundy_core/MakeStringArray.hpp>  // for mundy::core::make_string_array
 #include <mundy_core/throw_assert.hpp>     // for MUNDY_THROW_ASSERT
 
 // Mundy math
@@ -1157,6 +1156,7 @@ void compute_hertzian_contact_force_and_torque(const stk::mesh::BulkData &bulk_d
         math::Vector3d closest_point_target;
         double archlength_source;
         double archlength_target;
+        // TODO(palmerb4): This function has been replaced with mundy::geom::distance(seg, seg).
         const double distance = Kokkos::sqrt(math::distance::distance_sq_between_line_segments(
             source_node0_coords, source_node1_coords, target_node0_coords, target_node1_coords, closest_point_source,
             closest_point_target, archlength_source, archlength_target));

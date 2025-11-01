@@ -73,6 +73,20 @@ find_package(MPI REQUIRED)
 target_link_libraries(${PROJECT_NAME} PUBLIC $<$<BOOL:${MPI_CXX_FOUND}>:MPI::MPI_CXX>)
 
 ###############################################################################
+# Trilinos
+###############################################################################
+find_package(Trilinos REQUIRED HINTS ${Trilinos_DIR})
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${Trilinos_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${Trilinos_LIBRARIES})
+add_definitions(${Trilinos_DEFINITIONS})
+
+message("Found Trilinos = ${Trilinos_DIR}")
+message("Trilinos version:      ${Trilinos_VERSION}")
+message("Trilinos include dirs: ${Trilinos_INCLUDE_DIRS}")
+message("Trilinos libraries:    ${Trilinos_LIBRARIES}")
+message("Trilinos definitions:  ${Trilinos_DEFINITIONS}")
+
+###############################################################################
 # Mundy
 ###############################################################################
 find_package(Mundy REQUIRED HINTS ${Mundy_DIR})

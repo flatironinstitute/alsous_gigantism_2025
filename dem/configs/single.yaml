@@ -1,0 +1,29 @@
+ag2025:
+  # Config
+  is_2d: 1
+  num_sperm: 1
+  num_nodes_per_sperm: 301
+  sperm_radius: 0.5
+  sperm_initial_segment_length: 1.0
+  sperm_rest_segment_length: 1.0
+  domain_width: 1000.0 # 80% AF | 2 * num_sperm * sperm_radius / 0.8
+  interleave: 0
+
+  # Special 2D only params
+  degree_of_interleaving: 0
+
+  # Material properties
+  sperm_youngs_modulus: 500000.0
+  sperm_poissons_ratio: 0.3
+
+  # Undulation
+  amplitude: 0.1
+  spatial_wavelength: 60.0 #(num_nodes_per_sperm - 1) * sperm_initial_segment_length / 5.0
+  temporal_wavelength: 6.28318530718 # 2 * M_PI | Units: seconds per oscillations
+  viscosity: 1.0
+
+  # Simulation
+  timestep_size: 1.0e-5
+  num_time_steps: 200000000
+  io_frequency: 10000
+  search_buffer: 0.5 # sperm_radius

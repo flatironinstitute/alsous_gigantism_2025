@@ -8,9 +8,10 @@ ag2025:
   sperm_rest_segment_length: 1.0
   domain_width: 25.0 # 80% AF | 2 * num_sperm * sperm_radius / 0.8
   interleave: 1
+  is_periodic: 1
 
-
-
+  # Extrusion
+  enable_extrusion: 0
 
   # Material properties
   sperm_youngs_modulus: 500000.0

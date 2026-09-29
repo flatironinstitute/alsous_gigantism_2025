@@ -957,7 +957,7 @@ void compute_aabbs(stk::mesh::NgpMesh& ngp_mesh, const stk::mesh::Selector& segm
   elem_radius_field.sync_to_device();
   elem_aabb_field.sync_to_device();
 
-  stk::mesh::for_each_entity_run(
+  mesh::for_each_entity_run(
       ngp_mesh, stk::topology::ELEM_RANK, segments, KOKKOS_LAMBDA(const stk::mesh::FastMeshIndex& segment_index) {
         stk::mesh::NgpMesh::ConnectedNodes nodes = ngp_mesh.get_nodes(stk::topology::ELEM_RANK, segment_index);
         stk::mesh::FastMeshIndex node0_index = ngp_mesh.fast_mesh_index(nodes[0]);
@@ -1651,6 +1651,51 @@ void update_generalized_position(stk::mesh::NgpMesh& ngp_mesh, const double time
   node_twist_field.modify_on_device();
 }
 
+void rotate_state(stk::mesh::NgpMesh& ngp_mesh, const stk::mesh::Selector& selector,
+                  NgpDoubleField& node_coords_field, NgpDoubleField& node_twist_field,
+                  NgpDoubleField& node_velocity_field, NgpDoubleField& node_twist_velocity_field,
+                  NgpDoubleField& elem_aabb_field, NgpDoubleField& old_node_coords_field,
+                  NgpDoubleField& old_node_twist_field, NgpDoubleField& old_node_velocity_field,
+                  NgpDoubleField& old_node_twist_velocity_field, NgpDoubleField& elem_old_aabb_field) {
+  debug_print("Rotating the field states.");
+
+  node_coords_field.sync_to_device();
+  node_twist_field.sync_to_device();
+  node_velocity_field.sync_to_device();
+  node_twist_velocity_field.sync_to_device();
+  elem_aabb_field.sync_to_device();
+  old_node_coords_field.sync_to_device();
+  old_node_twist_field.sync_to_device();
+  old_node_velocity_field.sync_to_device();
+  old_node_twist_velocity_field.sync_to_device();
+  elem_old_aabb_field.sync_to_device();
+
+  // Copy the current node states into the old node states in a single pass
+  mesh::for_each_entity_run(
+      ngp_mesh, stk::topology::NODE_RANK, selector, KOKKOS_LAMBDA(const stk::mesh::FastMeshIndex& node_index) {
+        mesh::vector3_field_data(old_node_coords_field, node_index) =
+            mesh::vector3_field_data(node_coords_field, node_index);
+        mesh::vector3_field_data(old_node_velocity_field, node_index) =
+            mesh::vector3_field_data(node_velocity_field, node_index);
+        old_node_twist_field(node_index, 0) = node_twist_field(node_index, 0);
+        old_node_twist_velocity_field(node_index, 0) = node_twist_velocity_field(node_index, 0);
+      });
+
+  // Copy the current element AABBs into the old element AABBs
+  mesh::for_each_entity_run(
+      ngp_mesh, stk::topology::ELEM_RANK, selector, KOKKOS_LAMBDA(const stk::mesh::FastMeshIndex& elem_index) {
+        for (int i = 0; i < 6; ++i) {
+          elem_old_aabb_field(elem_index, i) = elem_aabb_field(elem_index, i);
+        }
+      });
+
+  old_node_coords_field.modify_on_device();
+  old_node_twist_field.modify_on_device();
+  old_node_velocity_field.modify_on_device();
+  old_node_twist_velocity_field.modify_on_device();
+  elem_old_aabb_field.modify_on_device();
+}
+
 void update_edge_basis(stk::mesh::NgpMesh& ngp_mesh, const stk::mesh::Selector& edge_selector,
                        stk::mesh::NgpField<double>& edge_orientation_field,
                        stk::mesh::NgpField<double>& edge_basis_1_field, stk::mesh::NgpField<double>& edge_basis_2_field,
@@ -1715,6 +1760,36 @@ void apply_monolayer(stk::mesh::NgpMesh& ngp_mesh, const stk::mesh::Part& center
   node_coords_field.modify_on_device();
   node_velocity_field.modify_on_device();
 }
+
+void apply_extrusion(stk::mesh::NgpMesh& ngp_mesh, const double extrusion_level, const double extrusion_speed,
+                     const stk::mesh::Part& centerline_twist_springs_part, NgpDoubleField& node_coords_field,
+                     NgpDoubleField& node_force_field, NgpDoubleField& node_twist_torque_field,
+                     NgpDoubleField& node_velocity_field, NgpDoubleField& node_twist_velocity_field) {
+  debug_print("Applying the extrusion.");
+
+  node_coords_field.sync_to_device();
+  node_force_field.sync_to_device();
+  node_twist_torque_field.sync_to_device();
+  node_velocity_field.sync_to_device();
+  node_twist_velocity_field.sync_to_device();
+
+  // Nodes below the extrusion level have no force/torque and are prescribed a constant velocity in +z.
+  mesh::for_each_entity_run(
+      ngp_mesh, stk::topology::NODE_RANK, centerline_twist_springs_part,
+      KOKKOS_LAMBDA(const stk::mesh::FastMeshIndex& node_index) {
+        if (node_coords_field(node_index, 2) < extrusion_level) {
+          mesh::vector3_field_data(node_force_field, node_index) = Vector3d(0.0, 0.0, 0.0);
+          mesh::vector3_field_data(node_velocity_field, node_index) = Vector3d(0.0, 0.0, extrusion_speed);
+          node_twist_torque_field(node_index, 0) = 0.0;
+          node_twist_velocity_field(node_index, 0) = 0.0;
+        }
+      });
+
+  node_force_field.modify_on_device();
+  node_twist_torque_field.modify_on_device();
+  node_velocity_field.modify_on_device();
+  node_twist_velocity_field.modify_on_device();
+}
 //@}
 
 }  // namespace
@@ -1750,6 +1825,12 @@ struct RunConfig {
       cmdp.setOption("degree_of_interleaving", &degree_of_interleaving,
                      "Number of interdigitations of the up-down groups.");
       cmdp.setOption("domain_width", &domain_width, "Width of the simulation domain.");
+      cmdp.setOption("is_periodic", &is_periodic, "Flag for periodic vs free-space boundaries.");
+
+      // Extrusion
+      cmdp.setOption("enable_extrusion", &enable_extrusion, "Flag for extruding the sperm upward.");
+      cmdp.setOption("extrusion_level", &extrusion_level, "Height below which nodes are extruded.");
+      cmdp.setOption("extrusion_speed", &extrusion_speed, "Speed at which nodes are extruded in +z.");
 
       // Material properties
       cmdp.setOption("sperm_youngs_modulus", &sperm_youngs_modulus, "Young's modulus of the sperm.");
@@ -1791,6 +1872,12 @@ struct RunConfig {
         degree_of_interleaving = param_list.get<int>("degree_of_interleaving");
       }
       domain_width = param_list.get<double>("domain_width");
+      is_periodic = param_list.get<int>("is_periodic");
+      enable_extrusion = param_list.get<int>("enable_extrusion");
+      if (enable_extrusion) {
+        extrusion_level = param_list.get<double>("extrusion_level");
+        extrusion_speed = param_list.get<double>("extrusion_speed");
+      }
       sperm_youngs_modulus = param_list.get<double>("sperm_youngs_modulus");
       sperm_poissons_ratio = param_list.get<double>("sperm_poissons_ratio");
       viscosity = param_list.get<double>("viscosity");
@@ -1816,6 +1903,9 @@ struct RunConfig {
     MUNDY_THROW_REQUIRE(sperm_rest_segment_length > -1e-12, std::invalid_argument,
                         "sperm_rest_segment_length must be greater than or equal to 0.");
     MUNDY_THROW_REQUIRE(domain_width > 0, std::invalid_argument, "domain_width must be greater than 0.");
+    if (enable_extrusion) {
+      MUNDY_THROW_REQUIRE(extrusion_speed > 0, std::invalid_argument, "extrusion_speed must be greater than 0.");
+    }
     MUNDY_THROW_REQUIRE(sperm_youngs_modulus > 0, std::invalid_argument,
                         "sperm_youngs_modulus must be greater than 0.");
     MUNDY_THROW_REQUIRE(sperm_poissons_ratio > 0, std::invalid_argument,
@@ -1854,6 +1944,12 @@ struct RunConfig {
       std::cout << "  io_frequency: " << io_frequency << std::endl;
       std::cout << "  search_buffer: " << search_buffer << std::endl;
       std::cout << "  domain_width: " << domain_width << std::endl;
+      std::cout << "  is_periodic: " << is_periodic << std::endl;
+      std::cout << "  enable_extrusion: " << enable_extrusion << std::endl;
+      if (enable_extrusion) {
+        std::cout << "  extrusion_level: " << extrusion_level << std::endl;
+        std::cout << "  extrusion_speed: " << extrusion_speed << std::endl;
+      }
       std::cout << "##################################################" << std::endl;
     }
   }
@@ -1888,6 +1984,11 @@ struct RunConfig {
   double search_buffer = sperm_radius;
   double domain_width =
       2 * std::sqrt(num_sperm) * sperm_radius / 0.8;  // One diameter separation between sperm == 50% area fraction
+  int is_periodic = true;
+
+  int enable_extrusion = false;
+  double extrusion_level = 0.0;
+  double extrusion_speed = 1.0;
   //@}
 };
 
@@ -2128,12 +2229,25 @@ void run(int argc, char** argv) {
       std::cout << "Time step " << timestep_index << " of " << run_config.num_time_steps << std::endl;
     }
 
+    //////////////////
+    // ROTATE STATE //
+    //////////////////
+    // Rotate the field states. Use a deep copy to update the old fields.
+    rotate_state(ngp_mesh, universal_part,                                                                   //
+                 ngp_node_coords_field, ngp_node_twist_field, ngp_node_velocity_field,                       //
+                 ngp_node_twist_velocity_field, ngp_elem_aabb_field,                                         //
+                 ngp_old_node_coords_field, ngp_old_node_twist_field, ngp_old_node_velocity_field,           //
+                 ngp_old_node_twist_velocity_field, ngp_elem_old_aabb_field);
+    if (timestep_index == 0) {
+      mesh::field_copy<double>(edge_orientation_field, old_edge_orientation_field, stk::ngp::ExecSpace{});
+      mesh::field_copy<double>(edge_tangent_field, old_edge_tangent_field, stk::ngp::ExecSpace{});
+    }
+
     ///////////////////
     // NEIGHBOR LIST //
     ///////////////////
     {
       // Check if we need to recreate the neighbors
-      mesh::field_copy<double>(elem_aabb_field, elem_old_aabb_field, stk::ngp::ExecSpace{});
       compute_aabbs(ngp_mesh, spherocylinder_segments_part, ngp_node_coords_field, ngp_elem_radius_field,
                     ngp_elem_aabb_field);
       mesh::field_axpbygz(1.0, elem_aabb_field, -1.0, elem_old_aabb_field, 1.0, elem_aabb_disp_since_last_rebuild_field,
@@ -2150,7 +2264,15 @@ void run(int argc, char** argv) {
         const bool results_parallel_symmetry = true;   // create source -> target and target -> source pairs
         const bool auto_swap_domain_and_range = true;  // swap source and target if target is owned and source is not
         const bool sort_search_results = false;        // sort the search results by source id
-        if (run_config.is_2d) {
+        if (!run_config.is_periodic) {
+          FreeSpaceMetric<double> free_space_metric;
+          auto [target_search_aabbs, source_search_aabbs] =
+              create_search_aabbs(bulk_data, ngp_mesh, run_config.search_buffer, free_space_metric,
+                                  spherocylinder_segments_part, ngp_elem_aabb_field);
+
+          stk::search::coarse_search(source_search_aabbs, target_search_aabbs, search_method, bulk_data.parallel(),
+                                     search_results, stk::ngp::ExecSpace{}, results_parallel_symmetry);
+        } else if (run_config.is_2d) {
           OrthorhombicMetric<AXIS_Y, double> periodic_metric(Vector3d{1.0, run_config.domain_width, 1.0});
           auto [target_search_aabbs, source_search_aabbs] =
               create_search_aabbs(bulk_data, ngp_mesh, run_config.search_buffer, periodic_metric,
@@ -2183,16 +2305,6 @@ void run(int argc, char** argv) {
       if (run_config.is_2d) {
         disable_twist(ngp_mesh, ngp_node_twist_field, ngp_node_twist_velocity_field);
         apply_monolayer(ngp_mesh, centerline_twist_springs_part, ngp_node_coords_field, ngp_node_velocity_field);
-      }
-
-      // Rotate the field states. Use a deep copy to update the old fields.
-      mesh::field_copy<double>(node_coords_field, old_node_coords_field, stk::ngp::ExecSpace{});
-      mesh::field_copy<double>(node_twist_field, old_node_twist_field, stk::ngp::ExecSpace{});
-      mesh::field_copy<double>(node_velocity_field, old_node_velocity_field, stk::ngp::ExecSpace{});
-      mesh::field_copy<double>(node_twist_velocity_field, old_node_twist_velocity_field, stk::ngp::ExecSpace{});
-      if (timestep_index == 0) {
-        mesh::field_copy<double>(edge_orientation_field, old_edge_orientation_field, stk::ngp::ExecSpace{});
-        mesh::field_copy<double>(edge_tangent_field, old_edge_tangent_field, stk::ngp::ExecSpace{});
       }
 
       // Move the nodes from t -> t + dt.
@@ -2259,6 +2371,13 @@ void run(int argc, char** argv) {
       compute_generalized_velocity(ngp_mesh, run_config.viscosity, spherocylinder_segments_part,  //
                                    ngp_node_radius_field, ngp_node_force_field, ngp_node_twist_torque_field,
                                    ngp_node_velocity_field, ngp_node_twist_velocity_field);
+
+      // Overwrite the force and velocity of the extruded nodes.
+      if (run_config.enable_extrusion) {
+        apply_extrusion(ngp_mesh, run_config.extrusion_level, run_config.extrusion_speed,
+                        centerline_twist_springs_part, ngp_node_coords_field, ngp_node_force_field,
+                        ngp_node_twist_torque_field, ngp_node_velocity_field, ngp_node_twist_velocity_field);
+      }
     }
 
     ///////////////

@@ -2,12 +2,18 @@ ag2025:
   # Config
   is_2d: 1
   num_sperm: 1
-  num_nodes_per_sperm: 301
+  num_nodes_per_sperm: 30001
   sperm_radius: 0.5
   sperm_initial_segment_length: 1.0
   sperm_rest_segment_length: 1.0
   domain_width: 1000.0 # 80% AF | 2 * num_sperm * sperm_radius / 0.8
   interleave: 0
+  is_periodic: 0
+
+  # Extrusion
+  enable_extrusion: 1
+  extrusion_level: 30001.0 # Nodes with z below this are extruded
+  extrusion_speed: 10.0 # Units: length per second in +z
 
   # Special 2D only params
   degree_of_interleaving: 0
@@ -25,5 +31,5 @@ ag2025:
   # Simulation
   timestep_size: 1.0e-5
   num_time_steps: 200000000
-  io_frequency: 10000
-  search_buffer: 0.5 # sperm_radius
+  io_frequency: 50000
+  search_buffer: 1.5 # 3 sperm_radius
